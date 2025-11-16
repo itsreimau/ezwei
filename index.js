@@ -1,7 +1,7 @@
-import "dotenv/config";
-import { Telegraf } from "telegraf";
-import util from "util";
-import { exec } from "child_process";
+require("dotenv").config();
+const { Telegraf } = require("telegraf");
+const util = require("util");
+const { exec } = require("child_process");
 
 // Validate environment variables
 const requiredEnvVars = ["BOT_TOKEN", "DEVELOPER_ID"];
@@ -18,57 +18,47 @@ const DEVELOPER_IDS = DEVELOPER_ID.split(",").map(id => id.trim());
 // Initialize bot
 const bot = new Telegraf(BOT_TOKEN);
 
-// Helper function to check if user is authorized
+// Check if user is authorized
 function isAuthorized(userId) {
     return DEVELOPER_IDS.includes(userId.toString());
 }
 
+// Send messages in stages
+async function sendMessage(ctx, message) {
+    const maxLength = 4096;
+    for (let i = 0; i < message.length; i += maxLength) {
+        await ctx.reply(message.slice(i, i + maxLength));
+    }
+}
+
 // Eval command
-bot.hears(/^([>|>>])\s+(.+)/, async (ctx) => {
+bot.hears(/^==> |^=> /, async (ctx) => {
     if (!isAuthorized(ctx.message.from.id)) return;
 
     try {
-        const code = ctx.match[2];
-        const result = await eval(ctx.match[1] === ">>" ? `(async () => { ${code} })()` : code);
-        await ctx.reply(util.inspect(result, {
-            depth: 1
-        }).substring(0, 4000));
+        const code = ctx.message.text.slice(ctx.message.text.startsWith("==> ") ? 4 : 3);
+        const result = await eval(ctx.message.text.startsWith("==> ") ? `(async () => { ${code} })()` : code);
+        await sendMessage(ctx, util.inspect(result));
     } catch (error) {
-        await ctx.reply(util.inspect(error, {
-            depth: 1
-        }).substring(0, 4000));
+        await sendMessage(ctx, util.format(error));
     }
 });
 
 // Exec command
-bot.hears(/^\$\s+(.+)/, async (ctx) => {
+bot.hears(/^\$ /, async (ctx) => {
     if (!isAuthorized(ctx.message.from.id)) return;
 
     try {
-        const command = ctx.match[1];
-        const output = await new Promise((resolve, reject) => {
-            exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    reject(new Error(`Error: ${error.message}`));
-                } else if (stderr) {
-                    reject(new Error(stderr));
-                } else {
-                    resolve(stdout);
-                }
-            });
-        });
-        await ctx.reply(output.toString().substring(0, 4000));
+        const command = ctx.message.text.slice(2);
+        const output = await util.promisify(exec)(command);
+        await sendMessage(ctx, output.stdout || output.stderr);
     } catch (error) {
-        await ctx.reply(util.inspect(error, {
-            depth: 1
-        }).substring(0, 4000));
+        await sendMessage(ctx, util.format(error));
     }
 });
 
 // Start bot
-bot.launch().then(() => {
-    console.log("Bot started");
-});
+bot.launch();
 
 // Enable graceful stop
 process.once("SIGINT", () => bot.stop("SIGINT"));
