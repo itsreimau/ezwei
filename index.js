@@ -38,7 +38,7 @@ bot.hears(/^==> |^=> /, async (ctx) => {
     try {
         const code = ctx.message.text.slice(ctx.message.text.startsWith("==> ") ? 4 : 3);
         const result = await eval(ctx.message.text.startsWith("==> ") ? `(async () => { ${code} })()` : code);
-        await sendMessage(ctx, util.inspect(result));
+        await sendMessage(ctx, util.format(result));
     } catch (error) {
         await sendMessage(ctx, util.format(error));
     }
